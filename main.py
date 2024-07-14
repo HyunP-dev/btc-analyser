@@ -4,6 +4,7 @@ import os
 from multiprocessing import Pool
 
 from PySide6.QtWidgets import *
+import gravis as gv
 
 from generated.sdn import SdnList
 from design.mainform import Ui_MainWindow
@@ -25,6 +26,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 for id_ in entry.id_list.id:
                     if id_.id_type == "Digital Currency Address - XBT":
                         self.blacks.add(id_.id_number)
+
     def txView_itemSelectionChanged(self):
         item = self.txView.currentItem()
         tx_id = item.toolTip(0)
@@ -32,10 +34,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.txIOView.clear()
         for input_ in sorted(tx["inputs"], key=lambda e: e["value"]):
-            item = QTreeWidgetItem([input_["address"], str(input_["address"] in self.blacks), str(input_["value"] / 100)])
+            item = QTreeWidgetItem(
+                [input_["address"], str(input_["address"] in self.blacks), str(input_["value"] / 100)])
             self.txIOView.addTopLevelItem(item)
         for output in sorted(tx["outputs"], key=lambda e: e["value"]):
-            item = QTreeWidgetItem([output["address"], str(output["address"] in self.blacks), "-" + str(output["value"] / 100)])
+            item = QTreeWidgetItem(
+                [output["address"], str(output["address"] in self.blacks), "-" + str(output["value"] / 100)])
             self.txIOView.addTopLevelItem(item)
 
     def search(self):
@@ -47,8 +51,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QTreeWidgetItem(["TXs", str(balance_info.txs)]),
             QTreeWidgetItem(["Received", str(balance_info.received)])
         ])
-
-
 
         target_entry = None
         for entry in self.sdn.sdn_entry:
@@ -116,8 +118,33 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             tx_item.setToolTip(0, tx_id)
             self.txView.addTopLevelItem(tx_item)
 
+        import networkx as nx
+
+        G = nx.DiGraph()
+        this_node = G.add_node(addr,
+                               label=addr[:8] + "...")
+        for tx in txs:
+            for input_ in sorted(tx["inputs"], key=lambda e: e["value"]):
+                if input_["address"] in self.blacks:
+                    G.add_node(input_["address"],
+                               label=input_["address"][:8] + "...")
+                    G.add_edge(input_["address"], addr, label=str(input_["value"] / 100))
+
+            for output in sorted(tx["outputs"], key=lambda e: e["value"]):
+                if output["address"] in self.blacks:
+                    G.add_node(output["address"],
+                               label=output["address"][:8] + "...")
+                    G.add_edge(addr, output["address"], label=str(output["value"] / 100))
+        self.webEngineView.setHtml(
+            gv.d3(G,
+                  node_label_data_source='label',
+                  show_edge_label=True,
+                  edge_label_data_source='label').to_html())
+
 
 if __name__ == "__main__":
+    if not os.path.exists("dataset"):
+        os.mkdir("dataset")
     if not os.path.exists("dataset/sdn.pickle"):
         from xsdata.formats.dataclass.parsers import XmlParser
 
